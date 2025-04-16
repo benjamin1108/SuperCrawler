@@ -44,6 +44,7 @@ venv.bak/
 *.sql
 *.sqlite
 *.db
+logs/
 
 # Output directories
 output/
@@ -51,3 +52,5 @@ output/
 # Local configuration files
 instance/
 .webassets-cache 
+# 自动添加的条目
+_backup_files/

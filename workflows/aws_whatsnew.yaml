@@ -1,0 +1,101 @@
+##本文档禁止大模型修改！如修改会引发严重后果！
+
+workflow_name: "AWS What's New 爬虫"
+description: "爬取AWS最新网络与内容分发公告，并将详情页内容保存为Markdown文件"
+version: "1.0"
+
+# 配置
+config:
+  headless: false
+  timeout: 30000
+  user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+  retry: 3  # 重试次数
+  delay: 2  # 延迟(秒)
+  output_directory: "output/aws_whatsnew"  # 输出目录
+  debug: true  # 开启调试模式
+
+# 起始URL - 使用中文站点
+start:
+  url: "https://aws.amazon.com/cn/about-aws/whats-new/networking_and_content_delivery/?whats-new-content.sort-by=item.additionalFields.postDateTime&whats-new-content.sort-order=desc&awsf.whats-new-products=*all"
+
+# 工作流
+flow:
+  # 步骤1: 爬取新闻列表页面
+  - step: "news_list"
+    next: "process_items"
+    actions:
+      # 等待页面完全加载
+      - action: "wait"
+        timeout: 5000
+      
+      # 提取新闻列表项
+      - action: "extract"
+        target: "links"
+        element:
+          # 匹配列表项中的链接
+          sample: "xpath=/html/body/div[2]/main/div[3]/div[2]/div[2]/div[4]/section/ul/li"
+          generalize: false
+        output: "news_items"
+      
+      # 提取分页信息，包括下一页按钮
+      - action: "extract"
+        target: "content"
+        elements:
+          - name: "next_page"
+            # 匹配分页区域中的下一页按钮
+            sample: "xpath=/html/body/div[2]/main/div[3]/div[2]/div[2]/div[5]/a[4]"
+            generalize: false
+        output: "pagination_data"
+    
+    # 分页设置 - 单击下一页按钮
+    pagination:
+      next_button: "xpath=/html/body/div[2]/main/div[3]/div[2]/div[2]/div[5]/a[4]"
+      max_pages: 10
+  
+  # 步骤2: 处理每个新闻项
+  - step: "process_items"
+    next: "finish"
+    for_each: "${news_items}"
+    actions:
+      # 访问详情页
+      - action: "visit"
+        url: "${current_item.href}"
+      
+      # 等待页面完全加载
+      - action: "wait"
+        timeout: 5000
+      
+      # 提取详情页内容
+      - action: "extract"
+        target: "content"
+        elements:
+          - name: "title"
+            # 标题通常是h1
+            sample: "xpath=//h1"
+            generalize: false
+          - name: "date"
+            # 日期元素
+            sample: "xpath=//div[contains(@class, 'blog-byline')]//span[contains(@class, 'date') or contains(@class, 'time')]"
+            generalize: false
+          - name: "content"
+            # 主内容区域
+            sample: "xpath=/html/body/div[2]/main/div/div/div/div/div/main"
+            generalize: false
+        output: "article_data"
+      
+      # 保存为Markdown文件
+      - action: "save"
+        data: {
+          "title": "${article_data.title}",
+          "date": "${article_data.date}",
+          "content": "${article_data.content}",
+          "url": "${current_item.href}"
+        }
+        format: "markdown"
+        filename: "${article_data.date}_${article_data.title}.md"
+
+  # 完成步骤
+  - step: "finish"
+    actions:
+      - action: "wait"
+        timeout: 1000
